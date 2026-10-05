@@ -1,0 +1,276 @@
+{
+  "name": "StillaEdge Signal → Telegram v3 (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stillaedge-signal",
+        "options": {}
+      },
+      "id": "a86abdad-3f8f-4b54-8390-5981758567e6",
+      "name": "StillaEdge Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        816,
+        240
+      ],
+      "webhookId": "stillaedge-signal"
+    },
+    {
+      "parameters": {
+        "jsCode": "// StillaEdge v2.7 kinds: setup | alignment | outcome | report | snapshot | calendar\nconst b = $json.body || $json;\nconst tf = String(b.tf || '').replace('PERIOD_', '');\nconst kind = b.kind || 'setup';\n\n// ---------- AI kinds: build a prompt, AI branch handles the rest ----------\nif (kind === 'snapshot') {\n  const prompt =\n    `You are an experienced forex technical analyst. Using ONLY the JSON data below, ` +\n    `write a concise intraday analysis in Burmese (Myanmar language). Keep all technical ` +\n    `terms in English (support, resistance, momentum, trend, breakout, confluence, ATR, RR). ` +\n    `Structure EXACTLY as four short sections, each on its own lines:\\n` +\n    `Bias: LONG / SHORT / NEUTRAL — one-line reason\\n` +\n    `ဦးစားပေး scenario: which key level holds, what target zones follow (use the zone prices in the data)\\n` +\n    `Alternative scenario: if that key level breaks, which levels come next\\n` +\n    `Comment: evidence from the data (trend states, momentum, alignment, zone bounce rates)\\n` +\n    `Rules: under 120 words. Plain text only, no markdown symbols (no ** or #). ` +\n    `NEVER invent price levels that are not in the data. If alignment is MIXED, bias must be NEUTRAL.\\n` +\n    `DATA: ${JSON.stringify(b)}`;\n  return [{ json: { route: 'ai', prompt, header: `📈 <b>${b.symbol} Market Analysis</b> (${b.time || ''})` } }];\n}\n\nif (kind === 'calendar') {\n  const prompt =\n    `You are preparing a daily economic-calendar briefing for a Myanmar forex trader. ` +\n    `All event times in the data are ALREADY in Myanmar time (Asia/Yangon). ` +\n    `Write in Burmese, keep event names in English. Start with ONE sentence saying which ` +\n    `currencies/sessions need caution today. Then list events ordered by time, one line each:\\n` +\n    `HH:MM 🔴 USD — Event Name (very short Burmese note)\\n` +\n    `Use 🔴 for HIGH importance and 🟡 for MODERATE. Under 150 words. Plain text, no markdown.\\n` +\n    `DATA: ${JSON.stringify(b)}`;\n  return [{ json: { route: 'ai', prompt, header: `📅 <b>တစ်နေ့တာ သတင်းထုတ်ပြန်မှုဇယား</b> (${b.date || ''})` } }];\n}\n\n// ---------- direct kinds: format the final message here ----------\nlet message = '';\n\nif (kind === 'alignment') {\n  const icon = b.side === 'BULL' ? '🟢📈' : '🔴📉';\n  message =\n    `🔥 <b>STRONG TREND ALIGNMENT</b>\\n` +\n    `📊 ${b.symbol}\\n` +\n    `${icon} Direction: <b>${b.side}</b>\\n` +\n    `(1D/4H/1H trend + 15M/30M momentum aligned)\\n` +\n    `🕐 ${b.time}`;\n\n} else if (kind === 'outcome') {\n  const win = b.result === 'WIN';\n  const icon = win ? '✅' : '❌';\n  const hrs = (Number(b.hold_min || 0) / 60).toFixed(1);\n  message =\n    `${icon} <b>Setup ${b.result}</b>\\n` +\n    `📊 ${b.symbol} ${tf} — ${b.side}\\n` +\n    `Entry ${b.entry} → Exit ${b.exit}\\n` +\n    `📐 ${b.r}R | Score was ${b.score}% | held ${hrs}h\\n` +\n    `🕐 ${b.time}`;\n\n} else if (kind === 'report') {\n  const closed = Number(b.closed || 0);\n  const bar = closed > 0\n    ? '🟩'.repeat(Number(b.wins)) + '🟥'.repeat(Number(b.losses))\n    : '—';\n  message =\n    `📋 <b>StillaEdge Daily Report</b>\\n` +\n    `📊 ${b.symbol} ${tf}\\n` +\n    `Closed today: <b>${b.closed}</b>  ${bar}\\n` +\n    `✅ ${b.wins} WIN / ❌ ${b.losses} LOSS` +\n    (closed > 0 ? ` (${b.winrate}%)` : '') + `\\n` +\n    `⏳ Still open: ${b.open}\\n` +\n    `📈 Since attach: ${b.total_wins}W / ${b.total_losses}L\\n` +\n    `🕐 ${b.time}`;\n\n} else {\n  const icon = b.side === 'BUY' ? '📈' : '📉';\n  const risk = Math.abs(Number(b.entry) - Number(b.sl));\n  const reward = Math.abs(Number(b.tp) - Number(b.entry));\n  const rr = risk > 0 ? (reward / risk).toFixed(1) : '?';\n  message =\n    `🔔 <b>StillaEdge Setup</b>\\n` +\n    `📊 ${b.symbol} ${tf}\\n` +\n    `${icon} <b>${b.side}</b> @ ${b.entry}\\n` +\n    `🛑 SL: ${b.sl}\\n` +\n    `🎯 TP: ${b.tp}\\n` +\n    `⚖️ RR 1:${rr} | Score: ${b.score}%\\n` +\n    `🕐 ${b.time}\\n` +\n    `<i>Stats-based guide — confirm on chart before entry.</i>`;\n}\n\nreturn [{ json: { route: 'direct', message } }];"
+      },
+      "id": "2f948842-ade5-4160-8377-f17189c2d5ab",
+      "name": "Route & Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "ai",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "aa70ee4d-fd3d-4d24-a13c-95bc3bb871ce"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cb6001c6-0543-4a5b-a219-7ab9518c566a",
+      "name": "Is AI Kind?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}"
+      },
+      "id": "e9fb0d88-21a9-4917-a200-d3a57e87c762",
+      "name": "AI Analysis",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        1472,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "17ae58de-f2ee-42bf-a443-dfdca425117f",
+      "name": "Gemini 2.5 Flash",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1472,
+        336
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "HB0xVkKKjghf9cI5",
+          "name": "gemin api pageup"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Attach header + fixed Burmese disclaimer. Never trust the model to include it.\nconst header = $('Route & Format').item.json.header || '';\nlet t = $json.text ?? $json.output ?? $json.response ?? '';\nt = String(t).trim()\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;');\nconst disclaimer =\n  '\\n\\n<i>မှတ်ချက်။ ။ အထက်ပါ သုံးသပ်ချက်များသည် AI မှ EA ပေးပို့သော market data ပေါ်အခြေခံ၍ သုံးသပ်ထားခြင်းသာဖြစ်ပြီး ရေးသားသူ AI ၏ တစ်ဦးတည်းအမြင်သာ ဖြစ်ပါသည်။ Market သုံးသပ်ချက် မှားယွင်းနိုင်ပါသဖြင့် အပြည့်အဝ မယုံကြည်ဘဲ တစ်စိတ်တစ်ပိုင်း အထောက်အကူအဖြစ်သာ အသုံးပြုပါရန်။</i>';\nreturn [{ json: { message: header + '\\n\\n' + t + disclaimer } }];"
+      },
+      "id": "593a2311-4379-46b8-8e4c-ac7b18269b01",
+      "name": "Finalize AI Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "7723418326",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "95376602-2af3-42b3-9940-46b3d45755b7",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2032,
+        112
+      ],
+      "webhookId": "cbb40f52-7493-4177-9416-0f618dc69582",
+      "credentials": {
+        "telegramApi": {
+          "id": "PBHJGboJWJUJHmdI",
+          "name": "Trading alerts"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "357861939",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "123460bb-21cf-46df-bb9a-e936f7556d14",
+      "name": "Send Telegram Alert1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2176,
+        416
+      ],
+      "webhookId": "037e4766-5a2d-4db0-bfc0-f04a77865149",
+      "credentials": {
+        "telegramApi": {
+          "id": "PBHJGboJWJUJHmdI",
+          "name": "Trading alerts"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "@fxmarketAlert",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "872d2317-ad6c-488f-ba1b-b8ca259592c8",
+      "name": "Send to Telegram channal",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1904,
+        256
+      ],
+      "webhookId": "037e4766-5a2d-4db0-bfc0-f04a77865149",
+      "credentials": {
+        "telegramApi": {
+          "id": "PBHJGboJWJUJHmdI",
+          "name": "Trading alerts"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "StillaEdge Webhook": {
+      "main": [
+        [
+          {
+            "node": "Route & Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route & Format": {
+      "main": [
+        [
+          {
+            "node": "Is AI Kind?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is AI Kind?": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini 2.5 Flash": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Finalize AI Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize AI Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "dc067183-ed7f-4161-98d0-2af9226f2756",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "440b5484cf423c913ac062c4876b9d804f3ec655c866a9f4a7085faf7af1949c"
+  },
+  "id": "ZUBvGZx0nLlppIHN",
+  "tags": []
+}
